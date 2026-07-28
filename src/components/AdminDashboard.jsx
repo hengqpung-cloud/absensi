@@ -29,9 +29,20 @@ export function AdminDashboard({ profile, onLogout, theme, toggleTheme }) {
     jam_pulang_pamdal_malam: '08:00'
   });
 
+  const getFirstDayOfMonth = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  };
+  const getLastDayOfMonth = () => {
+    const d = new Date();
+    const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  };
+
   // Filter States
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState(getFirstDayOfMonth());
+  const [endDate, setEndDate] = useState(getLastDayOfMonth());
 
   // Modal States
   const [isEmployeeModalOpen, setIsEmployeeModalOpen] = useState(false);
@@ -183,11 +194,23 @@ export function AdminDashboard({ profile, onLogout, theme, toggleTheme }) {
     );
   };
 
+  const formatShiftLabel = (shiftType, kategori) => {
+    const isPamdal = kategori === 'pamdal' || shiftType?.includes('pamdal');
+    if (isPamdal) {
+      if (shiftType === 'pamdal_malam') return 'Pamdal Shift Malam (20.00-08.00)';
+      if (shiftType === 'pamdal_siang') return 'Pamdal Shift Siang (08.00-20.00)';
+      return 'Pamdal Shift';
+    }
+    return 'Reguler';
+  };
+
   const filteredAttendances = attendances.filter((item) => {
     const matchesSearch =
       item.profiles?.nama_lengkap?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.profiles?.nip?.includes(searchQuery);
-    const matchesDate = filterDate ? item.tanggal_shift === filterDate : true;
+    const matchesDate =
+      (!startDate || item.tanggal_shift >= startDate) &&
+      (!endDate || item.tanggal_shift <= endDate);
     return matchesSearch && matchesDate;
   });
 
@@ -197,33 +220,36 @@ export function AdminDashboard({ profile, onLogout, theme, toggleTheme }) {
       Tanggal: item.tanggal_shift,
       Nama: item.profiles?.nama_lengkap || '-',
       NIP: item.profiles?.nip || '-',
-      Kategori: item.profiles?.kategori_pegawai || '-',
-      Shift: item.shift_type,
+      Kategori: (item.profiles?.kategori_pegawai || 'reguler').toUpperCase(),
+      Shift: formatShiftLabel(item.shift_type, item.profiles?.kategori_pegawai),
       JamMasuk: item.waktu_masuk ? new Date(item.waktu_masuk).toLocaleTimeString('id-ID') : '-',
       StatusMasuk: item.status_masuk === 'tepat_waktu' ? 'Tepat Waktu' : 'Terlambat',
-      JarakMasukMeter: item.jarak_masuk_meter,
+      JarakMasukMeter: item.jarak_masuk_meter ? `${item.jarak_masuk_meter}m` : '-',
       JamPulang: item.waktu_pulang ? new Date(item.waktu_pulang).toLocaleTimeString('id-ID') : '-',
-      StatusPulang: item.status_pulang || '-'
+      StatusPulang: item.status_pulang === 'pulang_cepat' ? 'Pulang Cepat' : item.status_pulang ? 'Tepat Waktu' : '-'
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(excelData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Laporan Absensi');
-    XLSX.writeFile(workbook, `Laporan_Absensi_Pegawai_${filterDate || 'All'}.xlsx`);
+    const rangeText = startDate && endDate ? `${startDate}_sd_${endDate}` : 'Semua';
+    XLSX.writeFile(workbook, `Laporan_Absensi_Pegawai_${rangeText}.xlsx`);
   };
 
   const exportToPDF = () => {
     const doc = new jsPDF();
     doc.text(`LAPORAN REKAPITULASI ABSENSI PEGAWAI`, 14, 15);
     doc.setFontSize(10);
-    doc.text(`Tanggal Perolehan: ${filterDate || 'Semua Tanggal'}`, 14, 22);
+    const rangeStr = startDate && endDate ? `${startDate} s/d ${endDate}` : 'Semua Tanggal';
+    doc.text(`Periode: ${rangeStr}`, 14, 22);
 
-    const tableColumn = ['No', 'Nama', 'NIP', 'Shift', 'Jam Masuk', 'Status', 'Jam Pulang'];
+    const tableColumn = ['No', 'Nama', 'NIP', 'Kategori', 'Shift', 'Jam Masuk', 'Status', 'Jam Pulang'];
     const tableRows = filteredAttendances.map((item, idx) => [
       idx + 1,
       item.profiles?.nama_lengkap || '-',
       item.profiles?.nip || '-',
-      item.shift_type,
+      (item.profiles?.kategori_pegawai || 'reguler').toUpperCase(),
+      formatShiftLabel(item.shift_type, item.profiles?.kategori_pegawai),
       item.waktu_masuk ? new Date(item.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-',
       item.status_masuk === 'tepat_waktu' ? 'Tepat Waktu' : 'Terlambat',
       item.waktu_pulang ? new Date(item.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'
@@ -237,7 +263,8 @@ export function AdminDashboard({ profile, onLogout, theme, toggleTheme }) {
       headStyles: { fillColor: [102, 3, 0] }
     });
 
-    doc.save(`Laporan_Absensi_${filterDate || 'All'}.pdf`);
+    const rangeText = startDate && endDate ? `${startDate}_sd_${endDate}` : 'Semua';
+    doc.save(`Laporan_Absensi_${rangeText}.pdf`);
   };
 
   return (
@@ -338,7 +365,7 @@ export function AdminDashboard({ profile, onLogout, theme, toggleTheme }) {
             <div className="glass-panel" style={{ padding: '20px', marginBottom: '20px' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
-                  <div style={{ position: 'relative', width: '240px' }}>
+                  <div style={{ position: 'relative', width: '200px' }}>
                     <Search size={16} color="var(--text-gold)" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
                     <input
                       type="text"
@@ -350,13 +377,27 @@ export function AdminDashboard({ profile, onLogout, theme, toggleTheme }) {
                     />
                   </div>
 
-                  <input
-                    type="date"
-                    className="form-input"
-                    style={{ width: '170px', height: '40px' }}
-                    value={filterDate}
-                    onChange={(e) => setFilterDate(e.target.value)}
-                  />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Mulai:</span>
+                    <input
+                      type="date"
+                      className="form-input"
+                      style={{ width: '145px', height: '40px' }}
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>s/d:</span>
+                    <input
+                      type="date"
+                      className="form-input"
+                      style={{ width: '145px', height: '40px' }}
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                    />
+                  </div>
 
                   <button onClick={fetchAttendances} className="btn btn-outline" style={{ height: '40px', padding: '0 14px' }}>
                     <RefreshCw size={16} /> Filter
@@ -382,6 +423,7 @@ export function AdminDashboard({ profile, onLogout, theme, toggleTheme }) {
                     <th style={{ padding: '12px' }}>Tanggal</th>
                     <th style={{ padding: '12px' }}>Pegawai</th>
                     <th style={{ padding: '12px' }}>NIP</th>
+                    <th style={{ padding: '12px' }}>Kategori</th>
                     <th style={{ padding: '12px' }}>Shift</th>
                     <th style={{ padding: '12px' }}>Jam Masuk</th>
                     <th style={{ padding: '12px' }}>Status Masuk</th>
@@ -392,7 +434,7 @@ export function AdminDashboard({ profile, onLogout, theme, toggleTheme }) {
                 <tbody>
                   {filteredAttendances.length === 0 ? (
                     <tr>
-                      <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                      <td colSpan="9" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                         Tidak ada data absensi yang sesuai filter.
                       </td>
                     </tr>
@@ -403,7 +445,10 @@ export function AdminDashboard({ profile, onLogout, theme, toggleTheme }) {
                         <td style={{ padding: '12px', fontWeight: 600 }}>{row.profiles?.nama_lengkap || '-'}</td>
                         <td style={{ padding: '12px', color: 'var(--text-muted)' }}>{row.profiles?.nip || '-'}</td>
                         <td style={{ padding: '12px' }}>
-                          <span className="badge badge-gold">{row.shift_type}</span>
+                          <span className="badge badge-success">{(row.profiles?.kategori_pegawai || 'reguler').toUpperCase()}</span>
+                        </td>
+                        <td style={{ padding: '12px' }}>
+                          <span className="badge badge-gold">{formatShiftLabel(row.shift_type, row.profiles?.kategori_pegawai)}</span>
                         </td>
                         <td style={{ padding: '12px' }}>
                           {row.waktu_masuk ? new Date(row.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'} ({row.jarak_masuk_meter}m)
