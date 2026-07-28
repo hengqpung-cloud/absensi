@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, Lock, User, AlertCircle, Sparkles, Sun, Moon } from 'lucide-react';
+import { Shield, Lock, User, AlertCircle, Sparkles, Sun, Moon, Info } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 export function Auth({ onLoginSuccess, theme, toggleTheme }) {
@@ -7,15 +7,16 @@ export function Auth({ onLoginSuccess, theme, toggleTheme }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [debugInfo, setDebugInfo] = useState(null);
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setErrorMsg('');
+    setDebugInfo(null);
     setLoading(true);
 
     try {
       const inputVal = nip.trim();
-      // Support login via NIP (auto appends @absensi.local) or full Email
       const email = inputVal.includes('@') ? inputVal : `${inputVal}@absensi.local`;
       
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -24,13 +25,12 @@ export function Auth({ onLoginSuccess, theme, toggleTheme }) {
       });
 
       if (error) {
-        let msg = error.message;
-        if (msg.includes('Invalid login credentials')) {
-          msg = `Kombinasi NIP/Email (${email}) dan Password tidak cocok. Silakan periksa kembali.`;
-        } else if (msg.includes('Email not confirmed')) {
-          msg = 'Email/NIP belum terkonfirmasi di Supabase Auth Dashboard. Matikan "Confirm Email" di Supabase Auth Settings.';
-        }
-        throw new Error(msg);
+        setDebugInfo({
+          attemptedEmail: email,
+          rawMessage: error.message,
+          status: error.status || 'Auth Error'
+        });
+        throw new Error(error.message);
       }
 
       if (data?.session) {
@@ -124,16 +124,28 @@ export function Auth({ onLoginSuccess, theme, toggleTheme }) {
             background: 'rgba(232, 48, 14, 0.15)',
             border: '1px solid rgba(232, 48, 14, 0.4)',
             borderRadius: 'var(--radius-sm)',
-            padding: '12px 14px',
+            padding: '14px',
             marginBottom: '20px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
             color: 'var(--color-brand-primary)',
             fontSize: '0.88rem'
           }}>
-            <AlertCircle size={18} style={{ flexShrink: 0 }} />
-            <span>{errorMsg}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 700, marginBottom: '4px' }}>
+              <AlertCircle size={18} style={{ flexShrink: 0 }} />
+              <span>Gagal Login: {errorMsg}</span>
+            </div>
+
+            {debugInfo && (
+              <div style={{
+                marginTop: '8px',
+                paddingTop: '8px',
+                borderTop: '1px dashed rgba(232, 48, 14, 0.3)',
+                fontSize: '0.78rem',
+                color: 'var(--text-muted)'
+              }}>
+                <div><strong>Email Target:</strong> {debugInfo.attemptedEmail}</div>
+                <div><strong>Pesan Supabase:</strong> {debugInfo.rawMessage}</div>
+              </div>
+            )}
           </div>
         )}
 
