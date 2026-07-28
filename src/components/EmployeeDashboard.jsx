@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   MapPin, Camera, Clock, CheckCircle2, AlertTriangle, 
-  LogOut, RefreshCw, Calendar, Shield, Moon, Sun, Image as ImageIcon, ChevronRight, LogIn
+  LogOut, RefreshCw, Calendar, Shield, Moon, Sun, Image as ImageIcon, LogIn, Upload
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { calculateHaversineDistance } from '../utils/haversine';
@@ -36,6 +36,7 @@ export function EmployeeDashboard({ profile, onLogout, theme, toggleTheme }) {
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     fetchCompanySettings();
@@ -85,7 +86,6 @@ export function EmployeeDashboard({ profile, onLogout, theme, toggleTheme }) {
         const todayRec = data.find((item) => item.tanggal_shift === shiftDate);
         setTodayAttendance(todayRec || null);
 
-        // Jika sudah absen masuk tetapi belum absen pulang, otomatis alihkan tab ke 'pulang'
         if (todayRec?.waktu_masuk && !todayRec?.waktu_pulang) {
           setAttendanceMode('pulang');
         }
@@ -117,19 +117,33 @@ export function EmployeeDashboard({ profile, onLogout, theme, toggleTheme }) {
     );
   };
 
+  // Universal Camera Opener
   const startCamera = async () => {
     setPhotoError(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
-      });
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user' }
+        });
+      } catch (e1) {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true
+        });
+      }
+
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        try {
+          await videoRef.current.play();
+        } catch (playErr) {
+          console.warn('Autoplay prevented:', playErr);
+        }
       }
       setIsCameraActive(true);
     } catch (err) {
-      setPhotoError('Tidak dapat membuka kamera. Pastikan izin kamera telah diaktifkan.');
+      setPhotoError('Kamera tidak dapat diakses langsung. Silakan gunakan tombol "Upload Foto Selfie" di bawah.');
     }
   };
 
@@ -149,7 +163,23 @@ export function EmployeeDashboard({ profile, onLogout, theme, toggleTheme }) {
       setCapturedPhotoUrl(URL.createObjectURL(blob));
       stopCamera();
     } catch (err) {
-      setPhotoError('Gagal mengambil foto selfie.');
+      setPhotoError('Gagal mengambil foto snapshot kamera.');
+    }
+  };
+
+  // Handle File Input Fallback
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setPhotoError(null);
+      const blob = await compressImageFromElement(file);
+      setCapturedPhotoBlob(blob);
+      setCapturedPhotoUrl(URL.createObjectURL(blob));
+      stopCamera();
+    } catch (err) {
+      setPhotoError('Gagal memproses file foto selfie.');
     }
   };
 
@@ -248,7 +278,6 @@ export function EmployeeDashboard({ profile, onLogout, theme, toggleTheme }) {
       const statusPulang = checkEarlyDeparture(new Date(), currentSchedule.jamPulang, currentSchedule.isCrossMidnight);
 
       if (todayAttendance?.id) {
-        // Update data absen masuk yang sudah ada
         const { error: dbErr } = await supabase
           .from('attendances')
           .update({
@@ -263,7 +292,6 @@ export function EmployeeDashboard({ profile, onLogout, theme, toggleTheme }) {
 
         if (dbErr) throw dbErr;
       } else {
-        // Jika belum ada absen masuk, buat data absen baru dengan jam pulang
         const shiftDate = getShiftDate(profile.kategori_pegawai, selectedShift);
         const { error: dbErr } = await supabase.from('attendances').insert({
           user_id: profile.id,
@@ -333,7 +361,6 @@ export function EmployeeDashboard({ profile, onLogout, theme, toggleTheme }) {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {/* Theme Toggle Button */}
             <button
               onClick={toggleTheme}
               className="theme-toggle-btn"
@@ -489,10 +516,10 @@ export function EmployeeDashboard({ profile, onLogout, theme, toggleTheme }) {
               )}
             </div>
 
-            {/* Camera Preview / Captured Photo */}
+            {/* Camera Preview / Captured Photo / File Upload */}
             <div style={{ marginBottom: '20px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <label className="form-label">Bukti Foto Selfie Live</label>
+                <label className="form-label">Bukti Foto Selfie Live / File</label>
                 {capturedPhotoUrl && (
                   <button onClick={resetPhoto} style={{ background: 'none', border: 'none', color: 'var(--text-gold)', fontSize: '0.8rem', cursor: 'pointer' }}>
                     <RefreshCw size={14} style={{ display: 'inline', marginRight: '4px' }} /> Foto Ulang
@@ -504,28 +531,52 @@ export function EmployeeDashboard({ profile, onLogout, theme, toggleTheme }) {
                 {capturedPhotoUrl ? (
                   <img src={capturedPhotoUrl} alt="Selfie Preview" />
                 ) : isCameraActive ? (
-                  <video ref={videoRef} autoPlay playsInline muted />
+                  <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
                   <div style={{ textAlign: 'center', padding: '20px' }}>
                     <Camera size={44} color="var(--text-gold)" style={{ marginBottom: '10px' }} />
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '14px' }}>
-                      Buka kamera untuk mengambil foto selfie bukti absen
+                      Buka kamera live atau upload foto selfie dari perangkat HP/Laptop Anda
                     </p>
-                    <button onClick={startCamera} className="btn btn-outline" style={{ fontSize: '0.85rem' }}>
-                      Buka Kamera Live
-                    </button>
+                    <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                      <button onClick={startCamera} className="btn btn-outline" style={{ fontSize: '0.85rem' }}>
+                        <Camera size={16} /> Buka Kamera Live
+                      </button>
+                      <button onClick={() => fileInputRef.current?.click()} className="btn btn-gold" style={{ fontSize: '0.85rem' }}>
+                        <Upload size={16} /> Upload Foto Selfie
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
 
+              {/* Hidden File Input for Native Camera/File Upload */}
+              <input
+                type="file"
+                ref={fileInputRef}
+                accept="image/*"
+                capture="user"
+                style={{ display: 'none' }}
+                onChange={handleFileUpload}
+              />
+
               {isCameraActive && !capturedPhotoUrl && (
-                <button
-                  onClick={capturePhoto}
-                  className="btn btn-gold"
-                  style={{ width: '100%', marginTop: '12px' }}
-                >
-                  <Camera size={18} /> Ambil Foto Snapshot
-                </button>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
+                  <button
+                    onClick={capturePhoto}
+                    className="btn btn-gold"
+                    style={{ flex: 2 }}
+                  >
+                    <Camera size={18} /> Ambil Foto Snapshot
+                  </button>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="btn btn-outline"
+                    style={{ flex: 1 }}
+                  >
+                    <Upload size={18} /> Upload
+                  </button>
+                </div>
               )}
 
               {photoError && (
