@@ -3,6 +3,7 @@ import {
   Users, MapPin, FileSpreadsheet, FileText, Settings, 
   Plus, Edit, Trash2, Shield, LogOut, Search, Filter, RefreshCw, CheckCircle2, AlertTriangle, Sun, Moon 
 } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -90,7 +91,17 @@ export function AdminDashboard({ profile, onLogout, theme, toggleTheme }) {
 
     try {
       const email = `${newEmployee.nip.trim()}@absensi.local`;
-      const { data: authData, error: authErr } = await supabase.auth.signUp({
+      
+      // Gunakan secondary Supabase client dengan persistSession: false
+      // agar tidak menimpa / merubah sesi login Admin yang sedang aktif!
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ztqdmyuhvhqijfgesgfg.supabase.co';
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_5RdYRzwZJcXO__p1wBVulA_3kOn73pI';
+      
+      const tempAuthClient = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: { persistSession: false }
+      });
+
+      const { data: authData, error: authErr } = await tempAuthClient.auth.signUp({
         email,
         password: newEmployee.password,
         options: {
@@ -105,6 +116,7 @@ export function AdminDashboard({ profile, onLogout, theme, toggleTheme }) {
 
       const userId = authData.user?.id;
       if (userId) {
+        // Simpan / update profil pegawai baru
         const { error: profileErr } = await supabase.from('profiles').upsert({
           id: userId,
           nama_lengkap: newEmployee.nama_lengkap,
@@ -116,7 +128,7 @@ export function AdminDashboard({ profile, onLogout, theme, toggleTheme }) {
         if (profileErr) throw profileErr;
       }
 
-      setAlertMsg({ type: 'success', text: `Pegawai ${newEmployee.nama_lengkap} berhasil ditambahkan!` });
+      setAlertMsg({ type: 'success', text: `Berhasil! Pegawai ${newEmployee.nama_lengkap} (NIP: ${newEmployee.nip}) telah ditambahkan.` });
       setIsEmployeeModalOpen(false);
       setNewEmployee({ nama_lengkap: '', nip: '', password: '', role: 'pegawai', kategori_pegawai: 'reguler' });
       fetchEmployees();
