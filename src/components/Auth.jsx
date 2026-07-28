@@ -14,15 +14,23 @@ export function Auth({ onLoginSuccess, theme, toggleTheme }) {
     setLoading(true);
 
     try {
-      // Login via email format: nip@absensi.local
-      const email = `${nip.trim()}@absensi.local`;
+      const inputVal = nip.trim();
+      // Support login via NIP (auto appends @absensi.local) or full Email
+      const email = inputVal.includes('@') ? inputVal : `${inputVal}@absensi.local`;
+      
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password
       });
 
       if (error) {
-        throw new Error('NIP atau Password salah. Silakan periksa kembali.');
+        let msg = error.message;
+        if (msg.includes('Invalid login credentials')) {
+          msg = `Kombinasi NIP/Email (${email}) dan Password tidak cocok. Silakan periksa kembali.`;
+        } else if (msg.includes('Email not confirmed')) {
+          msg = 'Email/NIP belum terkonfirmasi di Supabase Auth Dashboard. Matikan "Confirm Email" di Supabase Auth Settings.';
+        }
+        throw new Error(msg);
       }
 
       if (data?.session) {
@@ -131,7 +139,7 @@ export function Auth({ onLoginSuccess, theme, toggleTheme }) {
 
         <form onSubmit={handleLogin}>
           <div className="form-group">
-            <label className="form-label">Nomor Induk Pegawai (NIP / NIK)</label>
+            <label className="form-label">NIP / Email Pegawai</label>
             <div style={{ position: 'relative' }}>
               <User size={18} color="var(--text-gold)" style={{
                 position: 'absolute',
@@ -143,7 +151,7 @@ export function Auth({ onLoginSuccess, theme, toggleTheme }) {
                 type="text"
                 className="form-input"
                 style={{ paddingLeft: '42px' }}
-                placeholder="Masukkan NIP Anda"
+                placeholder="Masukkan NIP atau Email"
                 value={nip}
                 onChange={(e) => setNip(e.target.value)}
                 required
