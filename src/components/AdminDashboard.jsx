@@ -105,7 +105,7 @@ export function AdminDashboard({ profile, onLogout, theme, toggleTheme }) {
 
       const userId = authData.user?.id;
       if (userId) {
-        const { error: profileErr } = await supabase.from('profiles').insert({
+        const { error: profileErr } = await supabase.from('profiles').upsert({
           id: userId,
           nama_lengkap: newEmployee.nama_lengkap,
           nip: newEmployee.nip,
@@ -133,10 +133,19 @@ export function AdminDashboard({ profile, onLogout, theme, toggleTheme }) {
     setAlertMsg(null);
 
     try {
-      const { error } = await supabase.from('company_settings').upsert({
-        id: 1,
-        ...settings
-      });
+      const { error } = await supabase.from('company_settings').update({
+        nama_kantor: settings.nama_kantor,
+        latitude: settings.latitude,
+        longitude: settings.longitude,
+        radius_meter: settings.radius_meter,
+        jam_masuk_reguler: settings.jam_masuk_reguler,
+        jam_pulang_senin_kamis: settings.jam_pulang_senin_kamis,
+        jam_pulang_jumat: settings.jam_pulang_jumat,
+        jam_masuk_pamdal_siang: settings.jam_masuk_pamdal_siang,
+        jam_pulang_pamdal_siang: settings.jam_pulang_pamdal_siang,
+        jam_masuk_pamdal_malam: settings.jam_masuk_pamdal_malam,
+        jam_pulang_pamdal_malam: settings.jam_pulang_pamdal_malam
+      }).eq('id', 1);
 
       if (error) throw error;
       setAlertMsg({ type: 'success', text: 'Pengaturan kantor & jam kerja berhasil diperbarui!' });

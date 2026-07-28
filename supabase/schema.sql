@@ -83,23 +83,24 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- ========================================================
--- ROW LEVEL SECURITY (RLS) POLICIES
+-- ROW LEVEL SECURITY (RLS) POLICIES PERMISSIVE
 -- ========================================================
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.company_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.attendances ENABLE ROW LEVEL SECURITY;
 
--- Policy Profiles
-CREATE POLICY "Public Read Profiles" ON public.profiles FOR SELECT USING (true);
-CREATE POLICY "Admin Insert Profiles" ON public.profiles FOR INSERT WITH CHECK (true);
-CREATE POLICY "Admin Update Profiles" ON public.profiles FOR UPDATE USING (true);
+-- Drop existing restrictive policies
+DROP POLICY IF EXISTS "Public Read Profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Admin Insert Profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Admin Update Profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Public Read Settings" ON public.company_settings;
+DROP POLICY IF EXISTS "Admin Update Settings" ON public.company_settings;
+DROP POLICY IF EXISTS "User Read Own Attendances" ON public.attendances;
+DROP POLICY IF EXISTS "User Insert Own Attendance" ON public.attendances;
+DROP POLICY IF EXISTS "User Update Own Attendance" ON public.attendances;
 
--- Policy Company Settings
-CREATE POLICY "Public Read Settings" ON public.company_settings FOR SELECT USING (true);
-CREATE POLICY "Admin Update Settings" ON public.company_settings FOR UPDATE USING (true);
-
--- Policy Attendances
-CREATE POLICY "User Read Own Attendances" ON public.attendances FOR SELECT USING (true);
-CREATE POLICY "User Insert Own Attendance" ON public.attendances FOR INSERT WITH CHECK (true);
-CREATE POLICY "User Update Own Attendance" ON public.attendances FOR UPDATE USING (true);
+-- Create ALL Policies
+CREATE POLICY "Enable All Profiles" ON public.profiles FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Enable All Settings" ON public.company_settings FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Enable All Attendances" ON public.attendances FOR ALL USING (true) WITH CHECK (true);
