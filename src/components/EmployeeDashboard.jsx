@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   MapPin, Camera, Clock, CheckCircle2, AlertTriangle, 
-  LogOut, RefreshCw, Calendar, Shield, Moon, Sun, Image as ImageIcon, ChevronRight 
+  LogOut, RefreshCw, Calendar, Shield, Moon, Sun, Image as ImageIcon, ChevronRight, LogIn
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { calculateHaversineDistance } from '../utils/haversine';
@@ -25,10 +25,11 @@ export function EmployeeDashboard({ profile, onLogout, theme, toggleTheme }) {
   const [capturedPhotoUrl, setCapturedPhotoUrl] = useState(null);
   const [photoError, setPhotoError] = useState(null);
 
-  // Shift & Action State
+  // Shift & Mode State
   const [selectedShift, setSelectedShift] = useState(
     profile?.kategori_pegawai === 'pamdal' ? 'pamdal_siang' : 'reguler'
   );
+  const [attendanceMode, setAttendanceMode] = useState('masuk'); // 'masuk' | 'pulang'
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState(null);
   const [selectedHistoryPhoto, setSelectedHistoryPhoto] = useState(null);
@@ -83,6 +84,11 @@ export function EmployeeDashboard({ profile, onLogout, theme, toggleTheme }) {
         const shiftDate = getShiftDate(profile.kategori_pegawai, selectedShift);
         const todayRec = data.find((item) => item.tanggal_shift === shiftDate);
         setTodayAttendance(todayRec || null);
+
+        // Jika sudah absen masuk tetapi belum absen pulang, otomatis alihkan tab ke 'pulang'
+        if (todayRec?.waktu_masuk && !todayRec?.waktu_pulang) {
+          setAttendanceMode('pulang');
+        }
       }
     } catch (err) {
       console.error('Error fetching history:', err);
@@ -200,6 +206,7 @@ export function EmployeeDashboard({ profile, onLogout, theme, toggleTheme }) {
 
       setMessage({ type: 'success', text: 'Berhasil Absen Masuk! Kehadiran Anda telah dicatat.' });
       setTodayAttendance(newRec);
+      setAttendanceMode('pulang');
       setCapturedPhotoBlob(null);
       setCapturedPhotoUrl(null);
       fetchAttendanceHistory();
@@ -217,10 +224,6 @@ export function EmployeeDashboard({ profile, onLogout, theme, toggleTheme }) {
     }
     if (!capturedPhotoBlob) {
       setMessage({ type: 'error', text: 'Gagal Absen: Ambil foto selfie bukti fisik terlebih dahulu!' });
-      return;
-    }
-    if (!todayAttendance) {
-      setMessage({ type: 'error', text: 'Tidak ditemukan catatan absen masuk untuk dikembangkan.' });
       return;
     }
 
@@ -241,22 +244,47 @@ export function EmployeeDashboard({ profile, onLogout, theme, toggleTheme }) {
         photoUrl = publicUrlData?.publicUrl || '';
       }
 
-      const currentSchedule = getTodaySchedule(profile.kategori_pegawai, todayAttendance.shift_type, settings || {});
+      const currentSchedule = getTodaySchedule(profile.kategori_pegawai, selectedShift, settings || {});
       const statusPulang = checkEarlyDeparture(new Date(), currentSchedule.jamPulang, currentSchedule.isCrossMidnight);
 
-      const { error: dbErr } = await supabase
-        .from('attendances')
-        .update({
+      if (todayAttendance?.id) {
+        // Update data absen masuk yang sudah ada
+        const { error: dbErr } = await supabase
+          .from('attendances')
+          .update({
+            waktu_pulang: new Date().toISOString(),
+            lat_pulang: userCoords.latitude,
+            lng_pulang: userCoords.longitude,
+            foto_pulang_url: photoUrl,
+            status_pulang: statusPulang,
+            jarak_pulang_meter: distanceMeters
+          })
+          .eq('id', todayAttendance.id);
+
+        if (dbErr) throw dbErr;
+      } else {
+        // Jika belum ada absen masuk, buat data absen baru dengan jam pulang
+        const shiftDate = getShiftDate(profile.kategori_pegawai, selectedShift);
+        const { error: dbErr } = await supabase.from('attendances').insert({
+          user_id: profile.id,
+          tanggal_shift: shiftDate,
+          shift_type: selectedShift,
+          waktu_masuk: new Date().toISOString(),
           waktu_pulang: new Date().toISOString(),
+          lat_masuk: userCoords.latitude,
+          lng_masuk: userCoords.longitude,
           lat_pulang: userCoords.latitude,
           lng_pulang: userCoords.longitude,
+          foto_masuk_url: photoUrl,
           foto_pulang_url: photoUrl,
+          status_masuk: 'tepat_waktu',
           status_pulang: statusPulang,
+          jarak_masuk_meter: distanceMeters,
           jarak_pulang_meter: distanceMeters
-        })
-        .eq('id', todayAttendance.id);
+        });
 
-      if (dbErr) throw dbErr;
+        if (dbErr) throw dbErr;
+      }
 
       setMessage({ type: 'success', text: 'Berhasil Absen Pulang! Selamat beristirahat.' });
       setCapturedPhotoBlob(null);
@@ -355,6 +383,43 @@ export function EmployeeDashboard({ profile, onLogout, theme, toggleTheme }) {
               </span>
             </div>
 
+            {/* TAB SELECTOR: Absen Masuk vs Absen Pulang */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '16px' }}>
+              <button
+                className={`btn ${attendanceMode === 'masuk' ? 'btn-primary' : 'btn-outline'}`}
+                onClick={() => setAttendanceMode('masuk')}
+                style={{ padding: '10px' }}
+              >
+                <LogIn size={16} /> Absen Masuk
+              </button>
+              <button
+                className={`btn ${attendanceMode === 'pulang' ? 'btn-gold' : 'btn-outline'}`}
+                onClick={() => setAttendanceMode('pulang')}
+                style={{ padding: '10px' }}
+              >
+                <LogOut size={16} /> Absen Pulang
+              </button>
+            </div>
+
+            {/* Status Absen Masuk jika sudah dicatat */}
+            {todayAttendance?.waktu_masuk && (
+              <div style={{
+                background: 'rgba(16, 185, 129, 0.15)',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                borderRadius: 'var(--radius-sm)',
+                padding: '10px 14px',
+                marginBottom: '16px',
+                fontSize: '0.82rem',
+                color: '#10b981',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <CheckCircle2 size={16} /> Absen Masuk: {new Date(todayAttendance.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                {todayAttendance?.waktu_pulang && ` | Pulang: ${new Date(todayAttendance.waktu_pulang).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`}
+              </div>
+            )}
+
             {/* Shift Selector if Pamdal */}
             {profile.kategori_pegawai === 'pamdal' && (
               <div style={{ marginBottom: '18px' }}>
@@ -364,7 +429,6 @@ export function EmployeeDashboard({ profile, onLogout, theme, toggleTheme }) {
                     type="button"
                     className={`btn ${selectedShift === 'pamdal_siang' ? 'btn-primary' : 'btn-outline'}`}
                     onClick={() => setSelectedShift('pamdal_siang')}
-                    disabled={!!todayAttendance?.waktu_masuk}
                   >
                     <Sun size={16} /> Shift Siang (08-20)
                   </button>
@@ -372,7 +436,6 @@ export function EmployeeDashboard({ profile, onLogout, theme, toggleTheme }) {
                     type="button"
                     className={`btn ${selectedShift === 'pamdal_malam' ? 'btn-primary' : 'btn-outline'}`}
                     onClick={() => setSelectedShift('pamdal_malam')}
-                    disabled={!!todayAttendance?.waktu_masuk}
                   >
                     <Moon size={16} /> Shift Malam (20-08)
                   </button>
@@ -472,9 +535,9 @@ export function EmployeeDashboard({ profile, onLogout, theme, toggleTheme }) {
               )}
             </div>
 
-            {/* Action Buttons: Clock In / Clock Out */}
+            {/* Action Buttons: Clock In / Clock Out based on active Tab */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {!todayAttendance?.waktu_masuk ? (
+              {attendanceMode === 'masuk' ? (
                 <button
                   onClick={handleClockIn}
                   className="btn btn-primary pulse-active"
@@ -483,47 +546,15 @@ export function EmployeeDashboard({ profile, onLogout, theme, toggleTheme }) {
                 >
                   {submitting ? 'Memproses Absen Masuk...' : 'ABSEN MASUK (CLOCK IN)'}
                 </button>
-              ) : !todayAttendance?.waktu_pulang ? (
-                <div>
-                  <div style={{
-                    background: 'rgba(16, 185, 129, 0.15)',
-                    border: '1px solid rgba(16, 185, 129, 0.3)',
-                    borderRadius: 'var(--radius-sm)',
-                    padding: '10px 14px',
-                    marginBottom: '12px',
-                    fontSize: '0.85rem',
-                    color: '#10b981',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px'
-                  }}>
-                    <CheckCircle2 size={16} /> Absen Masuk Teratat: {new Date(todayAttendance.waktu_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-                  </div>
-
-                  <button
-                    onClick={handleClockOut}
-                    className="btn btn-gold pulse-active"
-                    style={{ width: '100%', padding: '14px', fontSize: '1rem' }}
-                    disabled={!isInRadius || !capturedPhotoBlob || submitting}
-                  >
-                    {submitting ? 'Memproses Absen Pulang...' : 'ABSEN PULANG (CLOCK OUT)'}
-                  </button>
-                </div>
               ) : (
-                <div style={{
-                  background: 'rgba(59, 130, 246, 0.15)',
-                  border: '1px solid rgba(59, 130, 246, 0.3)',
-                  borderRadius: 'var(--radius-md)',
-                  padding: '16px',
-                  textAlign: 'center',
-                  color: '#3b82f6'
-                }}>
-                  <CheckCircle2 size={28} style={{ marginBottom: '6px' }} />
-                  <h4 style={{ fontSize: '1rem', fontWeight: 700 }}>Absensi Hari Ini Selesai</h4>
-                  <p style={{ fontSize: '0.82rem', marginTop: '4px' }}>
-                    Terima kasih, Anda telah melengkapi absen masuk dan pulang.
-                  </p>
-                </div>
+                <button
+                  onClick={handleClockOut}
+                  className="btn btn-gold pulse-active"
+                  style={{ width: '100%', padding: '14px', fontSize: '1rem' }}
+                  disabled={!isInRadius || !capturedPhotoBlob || submitting}
+                >
+                  {submitting ? 'Memproses Absen Pulang...' : 'ABSEN PULANG (CLOCK OUT)'}
+                </button>
               )}
             </div>
           </div>
