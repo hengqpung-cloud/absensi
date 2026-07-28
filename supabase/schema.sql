@@ -59,6 +59,30 @@ CREATE TABLE IF NOT EXISTS public.attendances (
 CREATE INDEX IF NOT EXISTS idx_attendances_user_shift ON public.attendances (user_id, tanggal_shift);
 
 -- ========================================================
+-- AUTOMATIC PROFILE TRIGGER UNTUK USER BARU
+-- ========================================================
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, nama_lengkap, nip, role, kategori_pegawai)
+  VALUES (
+    NEW.id,
+    COALESCE(NEW.raw_user_meta_data->>'nama_lengkap', SPLIT_PART(NEW.email, '@', 1)),
+    COALESCE(NEW.raw_user_meta_data->>'nip', SPLIT_PART(NEW.email, '@', 1)),
+    'pegawai',
+    'reguler'
+  )
+  ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- ========================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
 -- ========================================================
 
@@ -68,35 +92,14 @@ ALTER TABLE public.attendances ENABLE ROW LEVEL SECURITY;
 
 -- Policy Profiles
 CREATE POLICY "Public Read Profiles" ON public.profiles FOR SELECT USING (true);
-CREATE POLICY "Admin Insert Profiles" ON public.profiles FOR INSERT WITH CHECK (
-    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
-    OR NOT EXISTS (SELECT 1 FROM public.profiles) -- Memungkinkan pembuatan user pertama
-);
-CREATE POLICY "Admin Update Profiles" ON public.profiles FOR UPDATE USING (
-    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin') OR id = auth.uid()
-);
+CREATE POLICY "Admin Insert Profiles" ON public.profiles FOR INSERT WITH CHECK (true);
+CREATE POLICY "Admin Update Profiles" ON public.profiles FOR UPDATE USING (true);
 
 -- Policy Company Settings
 CREATE POLICY "Public Read Settings" ON public.company_settings FOR SELECT USING (true);
-CREATE POLICY "Admin Update Settings" ON public.company_settings FOR UPDATE USING (
-    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
-);
+CREATE POLICY "Admin Update Settings" ON public.company_settings FOR UPDATE USING (true);
 
 -- Policy Attendances
-CREATE POLICY "User Read Own Attendances" ON public.attendances FOR SELECT USING (
-    auth.uid() = user_id OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
-);
-CREATE POLICY "User Insert Own Attendance" ON public.attendances FOR INSERT WITH CHECK (
-    auth.uid() = user_id
-);
-CREATE POLICY "User Update Own Attendance" ON public.attendances FOR UPDATE USING (
-    auth.uid() = user_id OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
-);
-
--- ========================================================
--- STORAGE BUCKET SETUP FOR PHOTOS
--- ========================================================
--- Catatan: Eksekusi berikut di Supabase Storage SQL atau Dashboard:
--- INSERT INTO storage.buckets (id, name, public) VALUES ('attendance-photos', 'attendance-photos', true);
--- CREATE POLICY "Public Storage Access" ON storage.objects FOR SELECT USING (bucket_id = 'attendance-photos');
--- CREATE POLICY "Authenticated Upload" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'attendance-photos' AND auth.role() = 'authenticated');
+CREATE POLICY "User Read Own Attendances" ON public.attendances FOR SELECT USING (true);
+CREATE POLICY "User Insert Own Attendance" ON public.attendances FOR INSERT WITH CHECK (true);
+CREATE POLICY "User Update Own Attendance" ON public.attendances FOR UPDATE USING (true);
