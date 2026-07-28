@@ -35,32 +35,19 @@ export function getTodaySchedule(kategoriPegawai, shiftType = 'reguler', setting
   };
 }
 
-/**
- - Memeriksa apakah kedatangan terlambat
- */
-export function checkLateArrival(waktuAbsen, targetTimeStr) {
-  const [targetHour, targetMinute] = targetTimeStr.split(':').map(Number);
-  const absenDate = new Date(waktuAbsen);
-  
-  const targetDate = new Date(absenDate);
-  targetDate.setHours(targetHour, targetMinute, 0, 0);
-
-  // Jika absen > target time -> terlambat
-  return absenDate.getTime() > targetDate.getTime() ? 'terlambat' : 'tepat_waktu';
+function toTargetDate(waktuAbsen, targetTimeStr) {
+  const [h, m] = targetTimeStr.split(':').map(Number);
+  const d = new Date(waktuAbsen);
+  d.setHours(h, m, 0, 0);
+  return d;
 }
 
-/**
- - Memeriksa apakah kepulangan lebih cepat dari jadwal
- */
-export function checkEarlyDeparture(waktuAbsen, targetTimeStr, isCrossMidnight = false) {
-  const [targetHour, targetMinute] = targetTimeStr.split(':').map(Number);
-  const absenDate = new Date(waktuAbsen);
-  
-  const targetDate = new Date(absenDate);
-  targetDate.setHours(targetHour, targetMinute, 0, 0);
+export function checkLateArrival(waktuAbsen, targetTimeStr) {
+  return new Date(waktuAbsen).getTime() > toTargetDate(waktuAbsen, targetTimeStr).getTime() ? 'terlambat' : 'tepat_waktu';
+}
 
-  // Jika absen < target time -> pulang_cepat
-  return absenDate.getTime() < targetDate.getTime() ? 'pulang_cepat' : 'tepat_waktu';
+export function checkEarlyDeparture(waktuAbsen, targetTimeStr) {
+  return new Date(waktuAbsen).getTime() < toTargetDate(waktuAbsen, targetTimeStr).getTime() ? 'pulang_cepat' : 'tepat_waktu';
 }
 
 /**

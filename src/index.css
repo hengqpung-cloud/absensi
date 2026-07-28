@@ -106,9 +106,6 @@ body {
   -webkit-text-fill-color: transparent;
 }
 
-.text-brand-red {
-  color: var(--color-brand-primary);
-}
 
 /* Theme Toggle Button */
 .theme-toggle-btn {
@@ -181,15 +178,6 @@ body {
   border-color: var(--color-brand-primary);
 }
 
-.btn-danger {
-  background: rgba(232, 48, 14, 0.15);
-  border: 1px solid rgba(232, 48, 14, 0.4);
-  color: #ff6b6b;
-}
-
-.btn-danger:hover:not(:disabled) {
-  background: rgba(232, 48, 14, 0.3);
-}
 
 .btn:disabled {
   opacity: 0.5;
@@ -216,11 +204,6 @@ body {
   border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
-.badge-warning {
-  background: rgba(245, 158, 11, 0.15);
-  color: #d97706;
-  border: 1px solid rgba(245, 158, 11, 0.3);
-}
 
 .badge-danger {
   background: rgba(232, 48, 14, 0.15);

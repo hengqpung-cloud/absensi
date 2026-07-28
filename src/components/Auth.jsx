@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, Lock, User, AlertCircle, Sparkles, Sun, Moon, Info } from 'lucide-react';
+import { Shield, Lock, User, AlertCircle, Sparkles, Sun, Moon } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 export function Auth({ onLoginSuccess, theme, toggleTheme }) {

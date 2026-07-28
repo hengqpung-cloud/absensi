@@ -189,137 +189,78 @@ export function EmployeeDashboard({ profile, onLogout, theme, toggleTheme }) {
     startCamera();
   };
 
-  const handleClockIn = async () => {
-    if (!isInRadius) {
-      setMessage({ type: 'error', text: 'Gagal Absen: Anda berada di luar radius lokasi kantor!' });
-      return;
-    }
-    if (!capturedPhotoBlob) {
-      setMessage({ type: 'error', text: 'Gagal Absen: Ambil foto selfie bukti fisik terlebih dahulu!' });
-      return;
-    }
+  const handleAttendance = async (mode) => {
+    if (!isInRadius) return setMessage({ type: 'error', text: 'Gagal Absen: Anda berada di luar radius lokasi kantor!' });
+    if (!capturedPhotoBlob) return setMessage({ type: 'error', text: 'Gagal Absen: Ambil foto selfie bukti fisik terlebih dahulu!' });
 
     setSubmitting(true);
     setMessage(null);
 
     try {
-      const fileName = `masuk_${profile.id}_${Date.now()}.jpg`;
-      const { data: uploadData, error: uploadErr } = await supabase.storage
+      const fileName = `${mode}_${profile.id}_${Date.now()}.jpg`;
+      const { data: uploadData } = await supabase.storage
         .from('attendance-photos')
         .upload(fileName, capturedPhotoBlob, { contentType: 'image/jpeg' });
 
-      let photoUrl = '';
-      if (uploadData) {
-        const { data: publicUrlData } = supabase.storage
-          .from('attendance-photos')
-          .getPublicUrl(fileName);
-        photoUrl = publicUrlData?.publicUrl || '';
+      const photoUrl = uploadData ? supabase.storage.from('attendance-photos').getPublicUrl(fileName).data?.publicUrl || '' : '';
+      const schedule = getTodaySchedule(profile.kategori_pegawai, selectedShift, settings || {});
+      const shiftDate = getShiftDate(profile.kategori_pegawai, selectedShift);
+      const nowIso = new Date().toISOString();
+
+      if (mode === 'masuk') {
+        const statusMasuk = checkLateArrival(new Date(), schedule.jamMasuk);
+        const { data: newRec, error } = await supabase.from('attendances').insert({
+          user_id: profile.id,
+          tanggal_shift: shiftDate,
+          shift_type: selectedShift,
+          waktu_masuk: nowIso,
+          lat_masuk: userCoords.latitude,
+          lng_masuk: userCoords.longitude,
+          foto_masuk_url: photoUrl,
+          status_masuk: statusMasuk,
+          jarak_masuk_meter: distanceMeters
+        }).select().single();
+
+        if (error) throw error;
+        setTodayAttendance(newRec);
+        setAttendanceMode('pulang');
+        setMessage({ type: 'success', text: 'Berhasil Absen Masuk! Kehadiran Anda telah dicatat.' });
+      } else {
+        const statusPulang = checkEarlyDeparture(new Date(), schedule.jamPulang);
+        const payload = {
+          waktu_pulang: nowIso,
+          lat_pulang: userCoords.latitude,
+          lng_pulang: userCoords.longitude,
+          foto_pulang_url: photoUrl,
+          status_pulang: statusPulang,
+          jarak_pulang_meter: distanceMeters
+        };
+
+        if (todayAttendance?.id) {
+          const { error } = await supabase.from('attendances').update(payload).eq('id', todayAttendance.id);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from('attendances').insert({
+            user_id: profile.id,
+            tanggal_shift: shiftDate,
+            shift_type: selectedShift,
+            waktu_masuk: nowIso,
+            lat_masuk: userCoords.latitude,
+            lng_masuk: userCoords.longitude,
+            foto_masuk_url: photoUrl,
+            status_masuk: 'tepat_waktu',
+            ...payload
+          });
+          if (error) throw error;
+        }
+        setMessage({ type: 'success', text: 'Berhasil Absen Pulang! Selamat beristirahat.' });
       }
 
-      const currentSchedule = getTodaySchedule(profile.kategori_pegawai, selectedShift, settings || {});
-      const statusMasuk = checkLateArrival(new Date(), currentSchedule.jamMasuk);
-      const shiftDate = getShiftDate(profile.kategori_pegawai, selectedShift);
-
-      const { data: newRec, error: dbErr } = await supabase.from('attendances').insert({
-        user_id: profile.id,
-        tanggal_shift: shiftDate,
-        shift_type: selectedShift,
-        waktu_masuk: new Date().toISOString(),
-        lat_masuk: userCoords.latitude,
-        lng_masuk: userCoords.longitude,
-        foto_masuk_url: photoUrl,
-        status_masuk: statusMasuk,
-        jarak_masuk_meter: distanceMeters
-      }).select().single();
-
-      if (dbErr) throw dbErr;
-
-      setMessage({ type: 'success', text: 'Berhasil Absen Masuk! Kehadiran Anda telah dicatat.' });
-      setTodayAttendance(newRec);
-      setAttendanceMode('pulang');
       setCapturedPhotoBlob(null);
       setCapturedPhotoUrl(null);
       fetchAttendanceHistory();
     } catch (err) {
       setMessage({ type: 'error', text: err.message || 'Gagal menyimpan absensi.' });
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleClockOut = async () => {
-    if (!isInRadius) {
-      setMessage({ type: 'error', text: 'Gagal Absen: Anda berada di luar radius lokasi kantor!' });
-      return;
-    }
-    if (!capturedPhotoBlob) {
-      setMessage({ type: 'error', text: 'Gagal Absen: Ambil foto selfie bukti fisik terlebih dahulu!' });
-      return;
-    }
-
-    setSubmitting(true);
-    setMessage(null);
-
-    try {
-      const fileName = `pulang_${profile.id}_${Date.now()}.jpg`;
-      const { data: uploadData, error: uploadErr } = await supabase.storage
-        .from('attendance-photos')
-        .upload(fileName, capturedPhotoBlob, { contentType: 'image/jpeg' });
-
-      let photoUrl = '';
-      if (uploadData) {
-        const { data: publicUrlData } = supabase.storage
-          .from('attendance-photos')
-          .getPublicUrl(fileName);
-        photoUrl = publicUrlData?.publicUrl || '';
-      }
-
-      const currentSchedule = getTodaySchedule(profile.kategori_pegawai, selectedShift, settings || {});
-      const statusPulang = checkEarlyDeparture(new Date(), currentSchedule.jamPulang, currentSchedule.isCrossMidnight);
-
-      if (todayAttendance?.id) {
-        const { error: dbErr } = await supabase
-          .from('attendances')
-          .update({
-            waktu_pulang: new Date().toISOString(),
-            lat_pulang: userCoords.latitude,
-            lng_pulang: userCoords.longitude,
-            foto_pulang_url: photoUrl,
-            status_pulang: statusPulang,
-            jarak_pulang_meter: distanceMeters
-          })
-          .eq('id', todayAttendance.id);
-
-        if (dbErr) throw dbErr;
-      } else {
-        const shiftDate = getShiftDate(profile.kategori_pegawai, selectedShift);
-        const { error: dbErr } = await supabase.from('attendances').insert({
-          user_id: profile.id,
-          tanggal_shift: shiftDate,
-          shift_type: selectedShift,
-          waktu_masuk: new Date().toISOString(),
-          waktu_pulang: new Date().toISOString(),
-          lat_masuk: userCoords.latitude,
-          lng_masuk: userCoords.longitude,
-          lat_pulang: userCoords.latitude,
-          lng_pulang: userCoords.longitude,
-          foto_masuk_url: photoUrl,
-          foto_pulang_url: photoUrl,
-          status_masuk: 'tepat_waktu',
-          status_pulang: statusPulang,
-          jarak_masuk_meter: distanceMeters,
-          jarak_pulang_meter: distanceMeters
-        });
-
-        if (dbErr) throw dbErr;
-      }
-
-      setMessage({ type: 'success', text: 'Berhasil Absen Pulang! Selamat beristirahat.' });
-      setCapturedPhotoBlob(null);
-      setCapturedPhotoUrl(null);
-      fetchAttendanceHistory();
-    } catch (err) {
-      setMessage({ type: 'error', text: err.message || 'Gagal menyimpan absensi pulang.' });
     } finally {
       setSubmitting(false);
     }
@@ -590,7 +531,7 @@ export function EmployeeDashboard({ profile, onLogout, theme, toggleTheme }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {attendanceMode === 'masuk' ? (
                 <button
-                  onClick={handleClockIn}
+                  onClick={() => handleAttendance('masuk')}
                   className="btn btn-primary pulse-active"
                   style={{ width: '100%', padding: '14px', fontSize: '1rem' }}
                   disabled={!isInRadius || !capturedPhotoBlob || submitting}
@@ -599,7 +540,7 @@ export function EmployeeDashboard({ profile, onLogout, theme, toggleTheme }) {
                 </button>
               ) : (
                 <button
-                  onClick={handleClockOut}
+                  onClick={() => handleAttendance('pulang')}
                   className="btn btn-gold pulse-active"
                   style={{ width: '100%', padding: '14px', fontSize: '1rem' }}
                   disabled={!isInRadius || !capturedPhotoBlob || submitting}

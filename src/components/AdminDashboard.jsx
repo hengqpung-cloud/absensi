@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Users, MapPin, FileSpreadsheet, FileText, Settings, 
-  Plus, Edit, Trash2, Shield, LogOut, Search, Filter, RefreshCw, CheckCircle2, AlertTriangle, Sun, Moon 
+  Plus, Shield, LogOut, Search, RefreshCw, CheckCircle2, AlertTriangle, Sun, Moon 
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
@@ -92,14 +92,11 @@ export function AdminDashboard({ profile, onLogout, theme, toggleTheme }) {
     try {
       const email = `${newEmployee.nip.trim()}@absensi.local`;
       
-      // Gunakan secondary Supabase client dengan persistSession: false
-      // agar tidak menimpa / merubah sesi login Admin yang sedang aktif!
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ztqdmyuhvhqijfgesgfg.supabase.co';
-      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_5RdYRzwZJcXO__p1wBVulA_3kOn73pI';
-      
-      const tempAuthClient = createClient(supabaseUrl, supabaseAnonKey, {
-        auth: { persistSession: false }
-      });
+      const tempAuthClient = createClient(
+        import.meta.env.VITE_SUPABASE_URL || 'https://your-supabase-project.supabase.co',
+        import.meta.env.VITE_SUPABASE_ANON_KEY || 'your-anon-key-placeholder',
+        { auth: { persistSession: false } }
+      );
 
       const { data: authData, error: authErr } = await tempAuthClient.auth.signUp({
         email,

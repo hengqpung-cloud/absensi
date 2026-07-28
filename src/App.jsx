@@ -3,7 +3,7 @@ import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { Auth } from './components/Auth';
 import { EmployeeDashboard } from './components/EmployeeDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
-import { Shield, Sparkles, AlertCircle, Sun, Moon } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 
 export function App() {
   const [session, setSession] = useState(null);
